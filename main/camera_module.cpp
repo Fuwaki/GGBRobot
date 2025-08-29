@@ -9,7 +9,7 @@ static const char* TAG = "摄像头模块";
 // WROVER-KIT 引脚定义
 #define CAM_PIN_PWDN -1 // PWDN引脚未使用
 #define CAM_PIN_RESET 4 // 将执行软件复位
-#define CAM_PIN_XCLK -1
+#define CAM_PIN_XCLK 12
 #define CAM_PIN_SIOD 17
 #define CAM_PIN_SIOC 18
 
