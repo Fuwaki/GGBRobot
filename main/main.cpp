@@ -36,8 +36,11 @@ const gpio_num_t led_a_pin = GPIO_NUM_7;
 const gpio_num_t led_b_pin = GPIO_NUM_15;
 
 void test(){
-    ImageDetector detector;
+  ImageDetector detector;
     detector.test_all();
+    ESP_LOGI(TAG, "开始图像检测测试...");
+    detector.detect_from_input();
+    ESP_LOGI(TAG, "图像检测测试完成。");
 }
 
 extern "C" void app_main()

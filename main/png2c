@@ -1,0 +1,15 @@
+python - "$@" <<'PY'
+import cv2, sys, textwrap, os
+path = sys.argv[1]
+name = os.path.splitext(os.path.basename(path))[0]   # 数组名用文件名
+img  = cv2.imread(path, cv2.IMREAD_GRAYSCALE)        # 读成灰度
+h, w = img.shape
+
+# 生成 C 文件
+with open(name + '.h', 'w', encoding='utf-8') as f:
+    f.write(f'const unsigned char {name}[{h}][{w}] = {{\n')
+    for row in img:
+        line = ','.join(map(str, row))
+        f.write('  {' + line + '},\n')
+    f.write('};\n')
+PY

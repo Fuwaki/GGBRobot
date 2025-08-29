@@ -11,6 +11,7 @@
 class ImageDetector {
 public:
     void test_all();
+    void detect_from_input();
 
 private:
     struct GroundTruth { int cx, cy, r; };
@@ -20,6 +21,8 @@ private:
 
     void test_findContours();
     void test_template_matching();
+    void detect_with_contours(const cv::Mat& img);
+    void detect_with_template_matching(const cv::Mat& img);
 
     // FFT helpers
     void fft2d(float* data, int width, int height);
