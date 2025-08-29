@@ -12,6 +12,18 @@ static const char *TAG = "ImageDetector";
 
 using namespace cv;
 
+// Helper to get the next power of 2
+unsigned int ImageDetector::nextPowerOf2(unsigned int n) {
+    n--;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    n++;
+    return n;
+}
+
 void ImageDetector::test_all() {
     test_findContours();
     test_template_matching();
@@ -117,7 +129,7 @@ void ImageDetector::test_template_matching()
         double maxVal; Point maxLoc;
         minMaxLoc(result, NULL, &maxVal, NULL, &maxLoc);
 
-        Rect box(maxLoc.x + search_window.x, minLoc.y + search_window.y, templ.cols, templ.rows);
+        Rect box(maxLoc.x + search_window.x, maxLoc.y + search_window.y, templ.cols, templ.rows);
         last_pos = box;
 
         Point2f center(box.x + box.width / 2.0f, box.y + box.height / 2.0f);
@@ -188,9 +200,9 @@ void ImageDetector::test_template_matching_fft() {
         return;
     }
 
-    float* img_fft_data = (float*)malloc(fft_w * fft_h * 2 * sizeof(float));
-    float* tpl_fft_data = (float*)malloc(fft_w * fft_h * 2 * sizeof(float));
-    float* result_fft_data = (float*)malloc(fft_w * fft_h * 2 * sizeof(float));
+    float* img_fft_data = new float[fft_w * fft_h * 2];
+    float* tpl_fft_data = new float[fft_w * fft_h * 2];
+    float* result_fft_data = new float[fft_w * fft_h * 2];
 
     GroundTruth gt;
     Mat frame0 = create_test_image(W, H, gt);
@@ -199,7 +211,7 @@ void ImageDetector::test_template_matching_fft() {
     if (roi.width <= 0 || roi.height <= 0) {
         ESP_LOGE(TAG, "FFT Template Matching: 初始ROI无效。");
         dsps_fft2r_deinit_fc32();
-        free(img_fft_data); free(tpl_fft_data); free(result_fft_data);
+        delete[] img_fft_data; delete[] tpl_fft_data; delete[] result_fft_data;
         return;
     }
     Mat templ_u8 = frame0(roi).clone();
@@ -260,9 +272,9 @@ void ImageDetector::test_template_matching_fft() {
         if (norm(center - Point2f(gt.cx, gt.cy)) < 5.0f) ++ok;
     }
 
-    free(img_fft_data);
-    free(tpl_fft_data);
-    free(result_fft_data);
+    delete[] img_fft_data;
+    delete[] tpl_fft_data;
+    delete[] result_fft_data;
     dsps_fft2r_deinit_fc32();
 
     float avg_ms = t_total / 1000.0f / (N - 1);

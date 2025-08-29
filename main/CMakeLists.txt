@@ -6,5 +6,6 @@ idf_component_register(
          "servo_controller.cpp"
          "kinematics_solver.cpp"
          "mini_matrix.cpp"
+         "image_detector.cpp"
     INCLUDE_DIRS ""
 )

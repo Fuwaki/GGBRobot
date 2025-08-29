@@ -1,6 +1,11 @@
 #ifndef IMAGE_DETECTOR_HPP
 #define IMAGE_DETECTOR_HPP
 
+// Undefine EPS to avoid conflict with OpenCV
+#ifdef EPS
+#undef EPS
+#endif
+
 #include <opencv2/opencv.hpp>
 
 class ImageDetector {
@@ -20,6 +25,7 @@ private:
     // FFT helpers
     void fft2d(float* data, int width, int height);
     void ifft2d(float* data, int width, int height);
+    unsigned int nextPowerOf2(unsigned int n);
 };
 
 #endif // IMAGE_DETECTOR_HPP
