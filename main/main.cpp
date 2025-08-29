@@ -1,5 +1,17 @@
 #include <opencv2/opencv.hpp>
+#include <opencv2/tracking.hpp>
+#include "esp_log.h"
+#include <cmath> // 用于 sin/cos
+#include <cstdio>
 
+// FreeRTOS
+#include "esp_random.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+#include <opencv2/opencv.hpp>
+#include <opencv2/tracking.hpp>
 #include "esp_log.h"
 #include <cmath> // 用于 sin/cos
 #include <cstdio>
@@ -39,23 +51,33 @@ using namespace cv;
 // 根据Python代码定义LED引脚
 const gpio_num_t led_a_pin = GPIO_NUM_7;
 const gpio_num_t led_b_pin = GPIO_NUM_15;
-struct GroundTruth {
-    int cx, cy, r;
-};
-
-/* 生成一张带已知真值圆的单通道图 */
+struct GroundTruth { int cx, cy, r; };
 static Mat create_test_image(int w, int h, GroundTruth& gt)
 {
     Mat img(h, w, CV_8UC1, Scalar(0));
-
-    /* 真值坐标固定用当前随机种子，保证后续能复现 */
     gt.cx = w * (300 + esp_random() % 400) / 1000;
     gt.cy = h * (300 + esp_random() % 400) / 1000;
     gt.r  = 15 + esp_random() % 25;
-
     circle(img, Point(gt.cx, gt.cy), gt.r, Scalar(255), -1);
     return img;
 }
+
+// 辅助函数，用于向图像添加椒盐噪声以测试稳健性
+static void add_salt_and_pepper_noise(Mat& img, int n)
+{
+    for (int k = 0; k < n; ++k) {
+        // Salt (白点)
+        int i = esp_random() % img.cols;
+        int j = esp_random() % img.rows;
+        img.at<uint8_t>(j, i) = 255;
+
+        // Pepper (黑点)
+        i = esp_random() % img.cols;
+        j = esp_random() % img.rows;
+        img.at<uint8_t>(j, i) = 0;
+    }
+}
+
 
 /* 1. findContours + minEnclosingCircle */
 void test_findContours()
@@ -67,6 +89,7 @@ void test_findContours()
     for (int i = 0; i < N; ++i) {
         GroundTruth gt;
         Mat img = create_test_image(W, H, gt);
+        add_salt_and_pepper_noise(img, 300); // 添加300个噪点
 
         Mat bin;
         threshold(img, bin, 0, 255, THRESH_BINARY | THRESH_OTSU);
@@ -88,7 +111,7 @@ void test_findContours()
     }
 
     float avg_ms = t_total / 1000.0f / N;
-    ESP_LOGI(TAG, "findContours: %.1f fps, 准确率 %.1f%%",
+    ESP_LOGI(TAG, "findContours (带噪点): %.1f fps, 准确率 %.1f%%",
              1000.0f / avg_ms, 100.0f * ok / N);
 }
 
@@ -103,6 +126,7 @@ void test_houghCircles()
     for (int i = 0; i < N; ++i) {
         GroundTruth gt;
         Mat img = create_test_image(W, H, gt);
+        add_salt_and_pepper_noise(img, 300); // 添加300个噪点
 
         int64_t t0 = esp_timer_get_time();
         std::vector<Vec3f> circles;
@@ -121,12 +145,76 @@ void test_houghCircles()
     }
 
     float avg_ms = t_total / 1000.0f / N;
-    ESP_LOGI(TAG, "HoughCircles: %.1f fps, 准确率 %.1f%%",
+    ESP_LOGI(TAG, "HoughCircles (带噪点): %.1f fps, 准确率 %.1f%%",
              1000.0f / avg_ms, 100.0f * ok / N);
 }
+
+/* 替代方案：模板匹配 */
+void test_template_matching()
+{
+    const int W = 160, H = 120, N = 100;
+    int ok = 0, NOISE_LEVEL = 300;
+    int64_t t_total = 0;
+
+    // --- 第 0 帧：初始化并创建模板 ---
+    GroundTruth gt;
+    Mat frame0 = create_test_image(W, H, gt);
+    Rect roi(gt.cx - gt.r, gt.cy - gt.r, 2 * gt.r, 2 * gt.r);
+    roi = roi & Rect(0, 0, W, H); // 裁剪以防越界
+
+    if (roi.width <= 0 || roi.height <= 0) {
+        ESP_LOGE(TAG, "Template Matching: 初始ROI无效。");
+        return;
+    }
+    Mat templ = frame0(roi).clone(); // 从第一帧创建模板
+    Rect last_pos = roi;
+    Mat frame(H, W, CV_8UC1); // 性能优化：在循环外创建Mat
+
+    // --- 主循环：第 1 ~ N-1 帧 ---
+    for (int i = 1; i < N; ++i) {
+        // 模拟平滑移动
+        gt.cx += (esp_random() % 7) - 3;
+        gt.cy += (esp_random() % 7) - 3;
+        gt.cx = std::max(gt.r, std::min(W - 1 - gt.r, gt.cx));
+        gt.cy = std::max(gt.r, std::min(H - 1 - gt.r, gt.cy));
+        frame.setTo(Scalar(0)); // 性能优化：清空Mat而不是重新分配
+        circle(frame, Point(gt.cx, gt.cy), gt.r, Scalar(255), -1);
+        add_salt_and_pepper_noise(frame, NOISE_LEVEL); // 稳健性测试：在目标帧上添加噪声
+
+        // 优化：在上一帧位置附近定义一个搜索窗口
+        Rect search_window = last_pos + Size(30, 30) - Point(15, 15);
+        search_window &= Rect(0, 0, W, H); // 确保窗口在图像内
+
+        if (search_window.width < templ.cols || search_window.height < templ.rows) continue;
+
+        Mat search_region = frame(search_window);
+        Mat result;
+
+        int64_t t0 = esp_timer_get_time();
+        matchTemplate(search_region, templ, result, TM_SQDIFF_NORMED);
+        t_total += esp_timer_get_time() - t0;
+
+        double minVal; Point minLoc;
+        minMaxLoc(result, &minVal, NULL, &minLoc, NULL);
+
+        // 将匹配位置从搜索区域坐标转换回全图坐标
+        Rect box(minLoc.x + search_window.x, minLoc.y + search_window.y, templ.cols, templ.rows);
+        last_pos = box; // 更新位置
+
+        Point2f center(box.x + box.width / 2.0f, box.y + box.height / 2.0f);
+        if (norm(center - Point2f(gt.cx, gt.cy)) < 5.0f) ++ok;
+    }
+
+    float avg_ms = t_total / 1000.0f / (N - 1);
+    ESP_LOGI(TAG, "TemplateMatching (带噪点): %.1f fps, 成功率 %.1f%%",
+             1000.0f / avg_ms, 100.0f * ok / (N - 1));
+}
+
+
 void test(){
-  test_findContours();
-  test_houghCircles();
+    test_findContours();
+    // test_houghCircles();
+    test_template_matching();
 }
 extern "C" void app_main()
 {

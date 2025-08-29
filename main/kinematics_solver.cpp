@@ -1,7 +1,7 @@
 #include "kinematics_solver.hpp"
 #include "mini_matrix.hpp" // 引入新的矩阵库
 #include <cmath>
-#include <vector>
+#include <array> // 使用 std::array 替代 std::vector
 #include <esp_dsp.h>
 
 namespace KinematicsSolver {
@@ -21,22 +21,20 @@ ServoAngles move_platform(float pitch, float roll, float h) {
     roll = roll * PI / 180.0f;
 
     // --- 2. 定义初始位置向量 ---
-    std::vector<Matrix> servos;
-    std::vector<Matrix> joints;
+    std::array<Matrix, 3> servos = {Matrix(3, 1), Matrix(3, 1), Matrix(3, 1)};
+    std::array<Matrix, 3> joints = {Matrix(3, 1), Matrix(3, 1), Matrix(3, 1)};
     float servo_angles[] = {0.0f, 2.0f * PI / 3.0f, 4.0f * PI / 3.0f};
     for (int i = 0; i < 3; ++i) {
         float angle = servo_angles[i];
-        Matrix s(3, 1);
+        Matrix& s = servos[i];
         s(0, 0) = Rbase * cosf(angle);
         s(1, 0) = Rbase * sinf(angle);
         s(2, 0) = 0;
-        servos.push_back(s);
 
-        Matrix j(3, 1);
+        Matrix& j = joints[i];
         j(0, 0) = Rbase * cosf(angle);
         j(1, 0) = Rbase * sinf(angle);
         j(2, 0) = h;
-        joints.push_back(j);
     }
 
     // --- 3. 创建姿态旋转矩阵 ---
