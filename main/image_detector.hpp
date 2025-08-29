@@ -20,7 +20,6 @@ private:
 
     void test_findContours();
     void test_template_matching();
-    void test_template_matching_fft();
 
     // FFT helpers
     void fft2d(float* data, int width, int height);

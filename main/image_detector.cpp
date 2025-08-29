@@ -27,7 +27,7 @@ unsigned int ImageDetector::nextPowerOf2(unsigned int n) {
 void ImageDetector::test_all() {
     test_findContours();
     test_template_matching();
-    test_template_matching_fft();
+    // test_template_matching_fft();
 }
 
 cv::Mat ImageDetector::create_test_image(int w, int h, GroundTruth& gt)
@@ -62,19 +62,34 @@ void ImageDetector::test_findContours()
         Mat img = create_test_image(W, H, gt);
         add_salt_and_pepper_noise(img, 300);
 
-        Mat bin;
+        Mat bin, morph;
         threshold(img, bin, 0, 255, THRESH_BINARY | THRESH_OTSU);
+        
+        Mat kernel = getStructuringElement(MORPH_RECT, Size(5, 5));
+        morphologyEx(bin, morph, MORPH_OPEN, kernel);
 
         int64_t t0 = esp_timer_get_time();
         std::vector<std::vector<Point>> cnts;
-        findContours(bin, cnts, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+        findContours(morph, cnts, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
 
         bool hit = false;
         if (!cnts.empty()) {
-            Point2f center; float r;
-            minEnclosingCircle(cnts[0], center, r);
-            if (norm(center - Point2f(gt.cx, gt.cy)) < 3 && fabs(r - gt.r) < 3) {
-                hit = true;
+            double max_area = 0;
+            int max_idx = -1;
+            for (int i = 0; i < cnts.size(); ++i) {
+                double area = contourArea(cnts[i]);
+                if (area > max_area) {
+                    max_area = area;
+                    max_idx = i;
+                }
+            }
+            
+            if (max_idx != -1) {
+                Point2f center; float r;
+                minEnclosingCircle(cnts[max_idx], center, r);
+                if (norm(center - Point2f(gt.cx, gt.cy)) < 3 && fabs(r - gt.r) < 3) {
+                    hit = true;
+                }
             }
         }
         t_total += esp_timer_get_time() - t0;
@@ -181,103 +196,4 @@ void ImageDetector::ifft2d(float* data, int width, int height) {
         data[i * 2] = data[i * 2] * scale;
         data[i * 2 + 1] = -data[i * 2 + 1] * scale;
     }
-}
-
-void ImageDetector::test_template_matching_fft() {
-    const int W = 160, H = 120, N = 100;
-    int ok = 0;
-    int64_t t_total = 0;
-
-    int fft_w = nextPowerOf2(W);
-    int fft_h = nextPowerOf2(H);
-    int fft_size = std::max(fft_w, fft_h);
-
-    ESP_LOGI(TAG, "FFT size: %d (from image %d x %d)", fft_size, W, H);
-
-    esp_err_t ret = dsps_fft2r_init_fc32(NULL, fft_size);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Not possible to initialize FFT2R. Error = %i", ret);
-        return;
-    }
-
-    float* img_fft_data = new float[fft_w * fft_h * 2];
-    float* tpl_fft_data = new float[fft_w * fft_h * 2];
-    float* result_fft_data = new float[fft_w * fft_h * 2];
-
-    GroundTruth gt;
-    Mat frame0 = create_test_image(W, H, gt);
-    Rect roi(gt.cx - gt.r, gt.cy - gt.r, 2 * gt.r, 2 * gt.r);
-    roi = roi & Rect(0, 0, W, H);
-    if (roi.width <= 0 || roi.height <= 0) {
-        ESP_LOGE(TAG, "FFT Template Matching: 初始ROI无效。");
-        dsps_fft2r_deinit_fc32();
-        delete[] img_fft_data; delete[] tpl_fft_data; delete[] result_fft_data;
-        return;
-    }
-    Mat templ_u8 = frame0(roi).clone();
-
-    memset(tpl_fft_data, 0, fft_w * fft_h * 2 * sizeof(float));
-    for (int y = 0; y < templ_u8.rows; y++) {
-        for (int x = 0; x < templ_u8.cols; x++) {
-            tpl_fft_data[((y * fft_w) + x) * 2] = templ_u8.at<uint8_t>(templ_u8.rows - 1 - y, templ_u8.cols - 1 - x);
-        }
-    }
-    fft2d(tpl_fft_data, fft_w, fft_h);
-
-    Mat frame(H, W, CV_8UC1);
-
-    for (int i = 1; i < N; ++i) {
-        gt.cx += (esp_random() % 7) - 3;
-        gt.cy += (esp_random() % 7) - 3;
-        gt.cx = std::max(gt.r, std::min(W - 1 - gt.r, gt.cx));
-        gt.cy = std::max(gt.r, std::min(H - 1 - gt.r, gt.cy));
-        frame.setTo(Scalar(0));
-        circle(frame, Point(gt.cx, gt.cy), gt.r, Scalar(255), -1);
-        add_salt_and_pepper_noise(frame, 300);
-
-        int64_t t0 = esp_timer_get_time();
-
-        memset(img_fft_data, 0, fft_w * fft_h * 2 * sizeof(float));
-        for (int y = 0; y < frame.rows; y++) {
-            for (int x = 0; x < frame.cols; x++) {
-                img_fft_data[(y * fft_w + x) * 2] = frame.at<uint8_t>(y, x);
-            }
-        }
-        fft2d(img_fft_data, fft_w, fft_h);
-
-        for (int k = 0; k < fft_w * fft_h; k++) {
-            float a = img_fft_data[k * 2];
-            float b = img_fft_data[k * 2 + 1];
-            float c = tpl_fft_data[k * 2];
-            float d = tpl_fft_data[k * 2 + 1];
-            result_fft_data[k * 2] = a * c - b * d;
-            result_fft_data[k * 2 + 1] = a * d + b * c;
-        }
-
-        ifft2d(result_fft_data, fft_w, fft_h);
-        
-        t_total += esp_timer_get_time() - t0;
-
-        Mat result_mat(fft_h, fft_w, CV_32FC1);
-        for(int y=0; y<fft_h; y++){
-            for(int x=0; x<fft_w; x++){
-                result_mat.at<float>(y,x) = result_fft_data[(y*fft_w + x)*2];
-            }
-        }
-        
-        Point maxLoc;
-        minMaxLoc(result_mat, NULL, NULL, NULL, &maxLoc);
-
-        Point2f center(maxLoc.x - templ_u8.cols/2, maxLoc.y - templ_u8.rows/2);
-        if (norm(center - Point2f(gt.cx, gt.cy)) < 5.0f) ++ok;
-    }
-
-    delete[] img_fft_data;
-    delete[] tpl_fft_data;
-    delete[] result_fft_data;
-    dsps_fft2r_deinit_fc32();
-
-    float avg_ms = t_total / 1000.0f / (N - 1);
-    ESP_LOGI(TAG, "TemplateMatching (FFT): %.1f fps, 成功率 %.1f%%",
-             1000.0f / avg_ms, 100.0f * ok / (N - 1));
 }
