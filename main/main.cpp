@@ -1,111 +1,186 @@
-#include "Arduino.h"
-#include "camera.hpp"
-#include <WiFi.h>
+#include <opencv2/opencv.hpp>
 
-// --- 请修改为您自己的Wi-Fi信息 ---
+#include "esp_log.h"
+#include <cmath> // 用于 sin/cos
+#include <cstdio>
+
+// FreeRTOS
+#include "esp_random.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+// 引入项目模块
+#include "camera_module.hpp"
+#include "stream_server.hpp"
+#include "servo_controller.hpp"
+#include "kinematics_solver.hpp"
+
+
+
+
+// --- Wi-Fi凭证 ---
 const char* ssid = "Fuwaki's";
 const char* password = "114514qwq";
-// ------------------------------------
+// -------------------
 
 #define SERVER_PORT 8080
-WiFiServer server(SERVER_PORT);
+static const char *TAG = "主程序";
+using namespace cv;
 
-/**
- * @brief 示例图像处理算法：反转图像颜色
- * 这是一个可以直接操作像素缓冲区的函数。
- * @param image_buffer 指向图像数据的指针 (uint8_t*)
- * @param width 图像宽度
- * @param height 图像高度
- */
-void process_image_invert(uint8_t *image_buffer, int width, int height) {
-    // 缓冲区是一个一维数组，大小为 width * height
-    // 访问 (x, y) 处的像素: buffer[y * width + x]
-    size_t len = width * height;
-    for (size_t i = 0; i < len; i++) {
-        image_buffer[i] = image_buffer[i]>130?255:0; 
-    }
-}
 
-/**
- * @brief 捕获一帧图像，进行处理，并通过TCP客户端发送
- * @param client 连接的WiFi客户端
- */
-void stream_image(WiFiClient &client) {
-    if (!client.connected()) {
-        return;
-    }
 
-    camera_fb_t * fb = esp_camera_fb_get();
-    if (!fb) {
-        ESP_LOGE(TAG, "摄像头捕获失败");
-        return;
-    }
+// --- 舵机和平台控制 ---
+// 根据Python代码定义舵机对象，GPIO引脚为 1, 2, 3
+// ServoController::Servo servo_a(GPIO_NUM_1, LEDC_TIMER_0, LEDC_CHANNEL_0);
+// ServoController::Servo servo_b(GPIO_NUM_2, LEDC_TIMER_0, LEDC_CHANNEL_1);
+// ServoController::Servo servo_c(GPIO_NUM_3, LEDC_TIMER_0, LEDC_CHANNEL_2);
 
-    // --- 在这里运行你的图像处理算法 ---
-    // fb->buf 是一个指向 uint8_t 数组的指针，即你的像素数据。
-    // fb->width 和 fb->height 是图像的尺寸。
-    // 因为我们设置了 PIXFORMAT_GRAYSCALE，每个像素是1个字节。
-    process_image_invert((uint8_t *)fb->buf, fb->width, fb->height);
+// 根据Python代码定义LED引脚
+const gpio_num_t led_a_pin = GPIO_NUM_7;
+const gpio_num_t led_b_pin = GPIO_NUM_15;
+struct GroundTruth {
+    int cx, cy, r;
+};
 
-    // 新协议: 先发送4字节宽度，再发送4字节高度，最后发送原始图像数据
-    uint32_t width = fb->width;
-    uint32_t height = fb->height;
-
-    // 1. 发送图像宽度 (4字节, little-endian)
-    if (client.write((char *)&width, 4) != 4) {
-        ESP_LOGE(TAG, "发送图像宽度失败");
-        esp_camera_fb_return(fb);
-        return;
-    }
-
-    // 2. 发送图像高度 (4字节, little-endian)
-    if (client.write((char *)&height, 4) != 4) {
-        ESP_LOGE(TAG, "发送图像高度失败");
-        esp_camera_fb_return(fb);
-        return;
-    }
-
-    // 3. 发送处理后的灰度图像数据
-    if (client.write(fb->buf, fb->len) != fb->len) {
-        ESP_LOGE(TAG, "发送图像数据失败");
-    }
-
-    esp_camera_fb_return(fb);
-}
-
-extern "C" void app_main()
+/* 生成一张带已知真值圆的单通道图 */
+static Mat create_test_image(int w, int h, GroundTruth& gt)
 {
-    initArduino();
-    pinMode(7, OUTPUT);
-    digitalWrite(7, HIGH);
+    Mat img(h, w, CV_8UC1, Scalar(0));
 
-    WiFi.begin(ssid, password);
-    ESP_LOGI(TAG, "正在连接到WiFi: %s", ssid);
-    while (WiFi.status() != WL_CONNECTED) {
-        Serial.print(".");
-        delay(500);
-    }
-    Serial.println("");
+    /* 真值坐标固定用当前随机种子，保证后续能复现 */
+    gt.cx = w * (300 + esp_random() % 400) / 1000;
+    gt.cy = h * (300 + esp_random() % 400) / 1000;
+    gt.r  = 15 + esp_random() % 25;
 
-    ESP_LOGI(TAG, "WiFi已连接. IP地址: %s", WiFi.localIP().toString().c_str());
+    circle(img, Point(gt.cx, gt.cy), gt.r, Scalar(255), -1);
+    return img;
+}
 
-    if (camera_init() == ESP_OK) {
-        server.begin();
-        ESP_LOGI(TAG, "TCP服务器已启动，端口: %d. 等待客户端连接...", SERVER_PORT);
-        while(true) {
-            WiFiClient client = server.available();
-            if (client) {
-                ESP_LOGI(TAG, "客户端已连接: %s", client.remoteIP().toString().c_str());
-                while (client.connected()) {
-                    stream_image(client);
-                }
-                client.stop();
-                ESP_LOGI(TAG, "客户端已断开连接.");
-            } else {
-                // 当没有客户端连接时，添加一个短暂的延时。
-                // 这可以防止主循环持续占用CPU，从而让IDLE任务有机会运行并重置看门狗定时器。
-                delay(10);
+/* 1. findContours + minEnclosingCircle */
+void test_findContours()
+{
+    const int W = 160, H = 120, N = 100;
+    int ok = 0;
+    int64_t t_total = 0;
+
+    for (int i = 0; i < N; ++i) {
+        GroundTruth gt;
+        Mat img = create_test_image(W, H, gt);
+
+        Mat bin;
+        threshold(img, bin, 0, 255, THRESH_BINARY | THRESH_OTSU);
+
+        int64_t t0 = esp_timer_get_time();
+        std::vector<std::vector<Point>> cnts;
+        findContours(bin, cnts, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
+        bool hit = false;
+        for (auto& c : cnts) {
+            Point2f center; float r;
+            minEnclosingCircle(c, center, r);
+            if (norm(center - Point2f(gt.cx, gt.cy)) < 3 && fabs(r - gt.r) < 3) {
+                hit = true; break;
             }
         }
+        t_total += esp_timer_get_time() - t0;
+        ok += hit;
     }
+
+    float avg_ms = t_total / 1000.0f / N;
+    ESP_LOGI(TAG, "findContours: %.1f fps, 准确率 %.1f%%",
+             1000.0f / avg_ms, 100.0f * ok / N);
+}
+
+
+
+void test_houghCircles()
+{
+    const int W = 160, H = 120, N = 100;
+    int ok = 0;
+    int64_t t_total = 0;
+
+    for (int i = 0; i < N; ++i) {
+        GroundTruth gt;
+        Mat img = create_test_image(W, H, gt);
+
+        int64_t t0 = esp_timer_get_time();
+        std::vector<Vec3f> circles;
+        HoughCircles(img, circles, HOUGH_GRADIENT, 1, 80, 100, 12, 10, 50);
+
+        bool hit = false;
+        for (auto& c : circles) {
+            Point2f center(c[0], c[1]);
+            float r = c[2];
+            if (norm(center - Point2f(gt.cx, gt.cy)) < 3 && fabs(r - gt.r) < 3) {
+                hit = true; break;
+            }
+        }
+        t_total += esp_timer_get_time() - t0;
+        ok += hit;
+    }
+
+    float avg_ms = t_total / 1000.0f / N;
+    ESP_LOGI(TAG, "HoughCircles: %.1f fps, 准确率 %.1f%%",
+             1000.0f / avg_ms, 100.0f * ok / N);
+}
+void test(){
+  test_findContours();
+  test_houghCircles();
+}
+extern "C" void app_main()
+{
+    // --- 初始化硬件 ---
+    // gpio_set_direction(led_a_pin, GPIO_MODE_OUTPUT);
+    // gpio_set_direction(led_b_pin, GPIO_MODE_OUTPUT);
+    // gpio_set_level(led_a_pin, 1);
+    // gpio_set_level(led_b_pin, 1);
+
+    // // 初始化摄像头
+    // if (CameraModule::init() != ESP_OK) {
+    //     ESP_LOGE(TAG, "摄像头初始化失败，程序停止。");
+    //     return;
+    // }
+
+    // 初始化WiFi并启动流服务器
+    //StreamServer::init_wifi_and_start_server(ssid, password, SERVER_PORT);
+
+    // 舵机对象在构造时已自动 attach，此处延时等待舵机初始化完成
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+    ESP_LOGI(TAG, "初始化完成，开始主循环。");
+
+    // --- 主循环 ---
+    float a = 0.0f;
+    int b = 0;
+    test();
+    // while(true) {
+    //     // 记录循环开始时间
+    //     TickType_t start_tick = xTaskGetTickCount();
+
+    //     a += 0.1f;
+    //     b++;
+    //     gpio_set_level(led_a_pin, b % 2);
+
+    //     // 1. 计算期望的平台姿态
+    //     float current_pitch = 20.0f * cos(a);
+    //     float current_roll = 20.0f * sin(a);
+
+    //     // 2. 调用运动学解算器获取舵机角度
+    //     KinematicsSolver::ServoAngles angles = KinematicsSolver::move_platform(20.0, -10.0, 60.0f);
+
+    //     // // 3. 驱动舵机到目标角度
+    //     // servo_a.change_angle(angles.angle_a);
+    //     // servo_b.change_angle(angles.angle_b);
+    //     // servo_c.change_angle(angles.angle_c);
+    //     printf("%f %f %f\n", angles.angle_a, angles.angle_b, angles.angle_c);
+
+    //     // 记录循环结束时间
+    //     TickType_t end_tick = xTaskGetTickCount();
+    //     float elapsed_ms = (end_tick - start_tick) * portTICK_PERIOD_MS;
+    //     printf("Loop time: %.4f ms\n", elapsed_ms);
+
+    //     // 延时20毫秒，与 time.sleep(0.02) 对应
+    //     vTaskDelay(20 / portTICK_PERIOD_MS);
+    // }
 }
