@@ -287,9 +287,10 @@ void ImageDetector::detect_with_contours(const Mat& img) {
 
 void ImageDetector::detect_with_template_matching(const Mat& img) {
     // 创建一个简单的圆形模板 (假设球的半径大约是30像素)
-    int template_radius = 30; // Updated to user's expected radius
-    Mat templ(template_radius * 2 + 1, template_radius * 2 + 1, CV_8UC1, Scalar(0));
-    circle(templ, Point(template_radius, template_radius), template_radius, Scalar(255), -1);
+    int template_radius = 30;
+    // 模板应为黑球 (0) 在白背景 (255) 上，以匹配输入图像
+    Mat templ(template_radius * 2 + 1, template_radius * 2 + 1, CV_8UC1, Scalar(255)); // 背景白色
+    circle(templ, Point(template_radius, template_radius), template_radius, Scalar(0), -1); // 球黑色
 
     // 使用归一化相关系数匹配
     // 可以考虑多尺度模板匹配来提高鲁棒性，但这里先固定半径
@@ -304,7 +305,7 @@ void ImageDetector::detect_with_template_matching(const Mat& img) {
     ESP_LOGI(TAG, "  最大相关系数: %.3f", maxVal);
     ESP_LOGI(TAG, "  最佳匹配位置: (%d, %d)", maxLoc.x, maxLoc.y);
 
-    if (maxVal > 0.6) {  // 提高阈值，因为模板更接近真实大小
+    if (maxVal > 0.7) {  // 提高阈值，因为模板更接近真实大小且内容匹配
         Point center(maxLoc.x + template_radius, maxLoc.y + template_radius);
         ESP_LOGI(TAG, "  检测到物体中心: (%d, %d)", center.x, center.y);
         ESP_LOGI(TAG, "  检测到物体半径: %d", template_radius);
