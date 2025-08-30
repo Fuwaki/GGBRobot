@@ -1,6 +1,7 @@
 #include "camera_module.hpp"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "sensor.h"
 
 namespace CameraModule {
 
