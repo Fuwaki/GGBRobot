@@ -8,33 +8,53 @@
 
 #include <opencv2/opencv.hpp>
 
-class ImageDetector {
-public:
+namespace ImageDetector {
     void test_all();
     void detect_from_input();
 
-private:
+    // --- Data Structures ---
     struct GroundTruth { int cx, cy, r; };
+
     struct Circle {
         cv::Point2f center;
         float radius;
         bool found;
     };
 
+    struct MatchResult {
+        cv::Rect box;
+        double score;
+        bool found; // True if score is above a certain threshold
+    };
+
+    struct ContourFindParams {
+        double min_area = 0.0;
+        double max_area = 1e9;
+        double min_circularity = 0.0;
+        double min_radius = 0.0;
+        double max_radius = 1e9;
+
+        enum class Selection {
+            LARGEST_AREA,
+            CLOSEST_TO_POINT
+        };
+        Selection selection_method = Selection::LARGEST_AREA;
+        cv::Point2f expected_pos = {0, 0};
+    };
+
+    // --- Core Algorithm Functions ---
+    Circle find_ball_by_contour(const cv::Mat& processed_img, const ContourFindParams& params);
+    MatchResult find_ball_by_template(const cv::Mat& frame, const cv::Mat& templ, const cv::Rect& search_window, double threshold);
+
+    // --- Wrappers and Test Functions ---
     cv::Mat create_test_image(int w, int h, GroundTruth& gt);
     void add_salt_and_pepper_noise(cv::Mat& img, int n);
 
-    // Common function to find the largest contour and its enclosing circle
-    Circle find_largest_contour_circle(const cv::Mat& processed_image);
-
-    // Test functions
-    void test_findContours();
-    void test_findContours_no_noise(); // New test function using the common function
-    void test_template_matching();
-    
-    // Detection methods
     void detect_with_contours(const cv::Mat& img);
     void detect_with_template_matching(const cv::Mat& img);
+
+    void run_contour_test(bool with_noise);
+    void test_template_matching();
 };
 
 #endif // IMAGE_DETECTOR_HPP

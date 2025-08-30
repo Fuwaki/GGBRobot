@@ -7,5 +7,6 @@ idf_component_register(
          "kinematics_solver.cpp"
          "mini_matrix.cpp"
          "image_detector.cpp"
+         "simd.S"
     INCLUDE_DIRS ""
 )
