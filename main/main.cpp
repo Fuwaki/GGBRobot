@@ -259,8 +259,10 @@ void control()
 #endif
         if (!fb)
         {
-            ESP_LOGE(TAG, "获取摄像头帧失败");
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            // No new frame available yet, just continue to the next loop iteration.
+            // This allows the PID controllers and servos to keep running smoothly.
+            // Add a small delay to prevent busy-waiting.
+            vTaskDelay(pdMS_TO_TICKS(1));
             continue;
         }
 
