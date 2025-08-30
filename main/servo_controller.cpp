@@ -22,6 +22,7 @@ Servo::Servo(gpio_num_t pin, ledc_timer_t timer, ledc_channel_t channel) {
         .channel_number = 1,
     };
     iot_servo_init(LEDC_LOW_SPEED_MODE, &servo_cfg);
+    this->change_angle(100.0);
 }
 
 Servo::~Servo() {

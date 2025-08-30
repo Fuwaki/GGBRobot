@@ -1,18 +1,15 @@
 #include "image_processor.hpp"
+#include <opencv2/opencv.hpp>
+#include <cstdint>
 
 namespace ImageProcessor {
 
-void binarize(camera_fb_t *fb, uint8_t threshold) {
-    if (!fb || !fb->buf || fb->format != PIXFORMAT_GRAYSCALE) {
+void binarize(cv::Mat &img, uint8_t threshold) {
+    if (img.empty() || img.channels() != 1) {
         return; // 只处理有效的灰度图像
     }
 
-    uint8_t *image_buffer = fb->buf;
-    size_t len = fb->width * fb->height;
-
-    for (size_t i = 0; i < len; i++) {
-        image_buffer[i] = (image_buffer[i] > threshold) ? 255 : 0;
-    }
+    cv::threshold(img, img, threshold, 255, cv::THRESH_BINARY_INV);
 }
 
 } // namespace ImageProcessor
