@@ -1,6 +1,10 @@
+/*
+ * SPDX-FileCopyrightText: 2022-2023 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "stream_server.hpp"
-#include "camera_module.hpp"
-#include "image_processor.hpp"
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
@@ -21,11 +25,12 @@ static EventGroupHandle_t wifi_event_group;
 const int WIFI_CONNECTED_BIT = BIT0;
 
 static uint16_t server_port;
+static int client_socket = -1; // 将客户端套接字设为全局，以便在任务外部访问
 
 // 函数前向声明
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 static void tcp_server_task(void* pvParameters);
-static bool send_frame_data(int sock, camera_fb_t *fb);
+static bool send_data(int sock, const void* data, size_t len);
 
 void init_wifi_and_start_server(const char* ssid, const char* password, uint16_t port) {
     server_port = port;
@@ -70,6 +75,37 @@ void init_wifi_and_start_server(const char* ssid, const char* password, uint16_t
     xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
 }
 
+bool is_client_connected() {
+    return client_socket != -1;
+}
+
+bool send_image(const cv::Mat& img) {
+    if (client_socket < 0 || img.empty()) {
+        return false;
+    }
+
+    uint32_t width = img.cols;
+    uint32_t height = img.rows;
+    uint32_t len = img.total() * img.elemSize();
+
+    if (!send_data(client_socket, &width, sizeof(width))) return false;
+    if (!send_data(client_socket, &height, sizeof(height))) return false;
+    if (!send_data(client_socket, img.data, len)) return false;
+
+    return true;
+}
+
+bool send_detection_result(const ImageDetector::Circle& result) {
+    if (client_socket < 0) {
+        return false;
+    }
+    // 手动序列化以避免结构体填充问题
+    if (!send_data(client_socket, &result.center, sizeof(result.center))) return false; // 8 bytes (2x float)
+    if (!send_data(client_socket, &result.radius, sizeof(result.radius))) return false; // 4 bytes (float)
+    if (!send_data(client_socket, &result.found, sizeof(result.found))) return false;   // 1 byte (bool)
+    return true;
+}
+
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
@@ -86,13 +122,12 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
 static void tcp_server_task(void* pvParameters) {
     char addr_str[128];
     int addr_family = AF_INET;
-    int ip_protocol = 0;
+    int ip_protocol = IPPROTO_IP;
     struct sockaddr_in dest_addr;
 
     dest_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_port = htons(server_port);
-    ip_protocol = IPPROTO_IP;
 
     int listen_sock = socket(addr_family, SOCK_STREAM, ip_protocol);
     if (listen_sock < 0) {
@@ -126,39 +161,28 @@ static void tcp_server_task(void* pvParameters) {
             break;
         }
 
-        if (source_addr.sin_family == PF_INET) {
-            inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr.s_addr, addr_str, sizeof(addr_str) - 1);
-        }
+        inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr.s_addr, addr_str, sizeof(addr_str) - 1);
         ESP_LOGI(TAG, "套接字已接受来自IP地址的连接: %s", addr_str);
+        client_socket = sock;
 
+        // 保持连接打开，但在此任务中不执行任何操作。
+        // 主循环将使用send_image()发送数据。
+        // 我们通过检查套接字错误来检测断开连接。
         while (1) {
-            camera_fb_t *fb = CameraModule::get_frame();
-            if (!fb) {
-                ESP_LOGE(TAG, "摄像头捕获失败");
-                int error = 0;
-                socklen_t len = sizeof(error);
-                int retval = getsockopt(sock, SOL_SOCKET, SO_ERROR, &error, &len);
-                if (retval != 0 || error != 0) {
-                    ESP_LOGI(TAG, "客户端已断开连接。");
-                    break;
-                }
-                vTaskDelay(100 / portTICK_PERIOD_MS);
-                continue;
+            int error = 0;
+            socklen_t len = sizeof(error);
+            int retval = getsockopt(client_socket, SOL_SOCKET, SO_ERROR, &error, &len);
+            if (retval != 0 || error != 0) {
+                ESP_LOGI(TAG, "客户端已断开连接。 error: %d", error);
+                break; // 退出内部循环以接受新连接
             }
-
-            ImageProcessor::binarize(fb, 130);
-
-            if (!send_frame_data(sock, fb)) {
-                ESP_LOGI(TAG, "发送帧失败，客户端已断开连接。");
-                CameraModule::return_frame(fb);
-                break;
-            }
-
-            CameraModule::return_frame(fb);
+            vTaskDelay(pdMS_TO_TICKS(1000)); // 每秒检查一次连接
         }
 
-        shutdown(sock, 0);
-        close(sock);
+        // 客户端断开连接，重置套接字并准备接受新连接
+        shutdown(client_socket, 0);
+        close(client_socket);
+        client_socket = -1;
     }
 
 CLEAN_UP:
@@ -166,37 +190,18 @@ CLEAN_UP:
     vTaskDelete(NULL);
 }
 
-static bool send_frame_data(int sock, camera_fb_t *fb) {
-    uint32_t width = fb->width;
-    uint32_t height = fb->height;
-    
-    int to_write = sizeof(width);
-    char* p = (char*)&width;
+static bool send_data(int sock, const void* data, size_t len) {
+    const char* p = (const char*)data;
+    int to_write = len;
     while (to_write > 0) {
         int written = send(sock, p, to_write, 0);
-        if (written < 0) return false;
+        if (written < 0) {
+            ESP_LOGE(TAG, "发送数据时出错: errno %d", errno);
+            return false;
+        }
         to_write -= written;
         p += written;
     }
-
-    to_write = sizeof(height);
-    p = (char*)&height;
-    while (to_write > 0) {
-        int written = send(sock, p, to_write, 0);
-        if (written < 0) return false;
-        to_write -= written;
-        p += written;
-    }
-
-    to_write = fb->len;
-    p = (char*)fb->buf;
-    while (to_write > 0) {
-        int written = send(sock, p, to_write, 0);
-        if (written < 0) return false;
-        to_write -= written;
-        p += written;
-    }
-
     return true;
 }
 

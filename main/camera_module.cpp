@@ -9,7 +9,7 @@ static const char* TAG = "摄像头模块";
 // WROVER-KIT 引脚定义
 #define CAM_PIN_PWDN -1 // PWDN引脚未使用
 #define CAM_PIN_RESET 4 // 将执行软件复位
-#define CAM_PIN_XCLK 12
+#define CAM_PIN_XCLK -1
 #define CAM_PIN_SIOD 17
 #define CAM_PIN_SIOC 18
 
@@ -48,7 +48,7 @@ static camera_config_t camera_config = {
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
     
-    .pixel_format = PIXFORMAT_GRAYSCALE,
+        .pixel_format = PIXFORMAT_GRAYSCALE,
     .frame_size = FRAMESIZE_QQVGA, // 160x120
     .fb_count = 2, // 对于原始数据流，2个缓冲区就足够了，可以节省内存
     .grab_mode = CAMERA_GRAB_LATEST
