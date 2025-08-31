@@ -87,6 +87,9 @@ void Robot::update_pid_controllers(const ImageDetector::Circle &ball, const cv::
         double timestamp = esp_timer_get_time() / 1000000.0;
         double filtered_x_error = x_filter_->filter(x_error, timestamp);
         double filtered_y_error = y_filter_->filter(y_error, timestamp);
+        ESP_LOGW(TAG, "PID输入误差: X=%.2f (滤波前), X_filtered=%.2f (滤波后)", x_error, filtered_x_error);
+        ESP_LOGW(TAG, "PID输入误差: Y=%.2f (滤波前), Y_filtered=%.2f (滤波后)", y_error, filtered_y_error);
+
 
         // 计算两次调用之间的时间差 (dt)
         int64_t now_us = esp_timer_get_time();

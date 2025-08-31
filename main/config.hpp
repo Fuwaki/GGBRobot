@@ -47,7 +47,7 @@ namespace Params
 {
 // --- PID控制器参数 ---
 const double PID_P = 0.07;
-const double PID_I = 0.0005;
+const double PID_I = 0.0065;
 const double PID_D = 0.03;
 const float PID_OUTPUT_LIMIT_MIN = -30.0f;
 const float PID_OUTPUT_LIMIT_MAX = 30.0f;
