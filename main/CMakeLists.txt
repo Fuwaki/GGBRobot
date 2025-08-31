@@ -1,5 +1,6 @@
 idf_component_register(
     SRCS "main.cpp"
+         "robot.cpp"
          "camera_module.cpp"
          "stream_server.cpp"
          "image_processor.cpp"

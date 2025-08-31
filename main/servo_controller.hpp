@@ -4,20 +4,27 @@
 #include "iot_servo.h"
 #include "driver/ledc.h"
 
+/**
+ * @brief 舵机控制模块
+ */
 namespace ServoController {
 
 /**
- * @brief 舵机控制类
+ * @brief 封装了iot_servo库的舵机控制类
  */
 class Servo {
 public:
     /**
-     * @brief 构造一个新的舵机对象
+     * @brief 构造一个新的舵机对象并初始化
      * @param pin 舵机信号线连接的GPIO引脚
      * @param timer 使用的LEDC定时器
      * @param channel 使用的LEDC通道
      */
     Servo(gpio_num_t pin, ledc_timer_t timer, ledc_channel_t channel);
+    
+    /**
+     * @brief 析构函数, 停止LEDC通道
+     */
     ~Servo();
 
     /**

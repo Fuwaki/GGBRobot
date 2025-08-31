@@ -1,9 +1,14 @@
 #pragma once
 
+/**
+ * @brief 运动学求解器模块
+ * 
+ * 负责处理机器人平台的逆运动学计算。
+ */
 namespace KinematicsSolver {
 
 /**
- * @brief 用于保存三个舵机角度的结构体
+ * @brief 用于保存三个舵机目标角度的结构体
  */
 struct ServoAngles {
     float angle_a; // 对应舵机1 (0度方向)
@@ -13,6 +18,7 @@ struct ServoAngles {
 
 /**
  * @brief Stewart平台运动学逆解算
+ * 
  * 根据期望的平台姿态（俯仰、翻滚）和高度，计算出三个舵机需要转动的角度。
  *
  * @param pitch 期望的俯仰角 (绕Y轴)，单位：度

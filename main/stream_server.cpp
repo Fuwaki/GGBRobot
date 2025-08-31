@@ -20,12 +20,12 @@ namespace StreamServer {
 
 static const char* TAG = "视频流服务器";
 
-// 用于发出Wi-Fi连接信号的事件组
+// 用于Wi-Fi连接事件的FreeRTOS事件组
 static EventGroupHandle_t wifi_event_group;
 const int WIFI_CONNECTED_BIT = BIT0;
 
 static uint16_t server_port;
-static int client_socket = -1; // 将客户端套接字设为全局，以便在任务外部访问
+static int client_socket = -1; // 全局客户端套接字, -1表示未连接
 
 // 函数前向声明
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
@@ -35,7 +35,7 @@ static bool send_data(int sock, const void* data, size_t len);
 void init_wifi_and_start_server(const char* ssid, const char* password, uint16_t port) {
     server_port = port;
 
-    // 1. 初始化NVS
+    // 1. 初始化NVS (非易失性存储)
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -43,7 +43,7 @@ void init_wifi_and_start_server(const char* ssid, const char* password, uint16_t
     }
     ESP_ERROR_CHECK(ret);
 
-    // 2. 初始化网络协议栈
+    // 2. 初始化TCP/IP协议栈
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
@@ -53,7 +53,7 @@ void init_wifi_and_start_server(const char* ssid, const char* password, uint16_t
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    // 4. 设置事件处理器
+    // 4. 注册Wi-Fi和IP事件的处理器
     wifi_event_group = xEventGroupCreate();
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL));
@@ -72,7 +72,7 @@ void init_wifi_and_start_server(const char* ssid, const char* password, uint16_t
     ESP_LOGI(TAG, "WiFi已连接。");
 
     // 6. 启动TCP服务器任务
-    xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
+    xTaskCreate(tcp_server_task, "tcp_server_task", 4096, NULL, 5, NULL);
 }
 
 bool is_client_connected() {
@@ -84,12 +84,15 @@ bool send_image(const cv::Mat& img) {
         return false;
     }
 
+    // 协议: [宽度(4B)] [高度(4B)] [通道数(4B)] [图像数据(...B)]
     uint32_t width = img.cols;
     uint32_t height = img.rows;
+    uint32_t channels = img.channels();
     uint32_t len = img.total() * img.elemSize();
 
     if (!send_data(client_socket, &width, sizeof(width))) return false;
     if (!send_data(client_socket, &height, sizeof(height))) return false;
+    if (!send_data(client_socket, &channels, sizeof(channels))) return false;
     if (!send_data(client_socket, img.data, len)) return false;
 
     return true;
@@ -100,9 +103,9 @@ bool send_detection_result(const ImageDetector::Circle& result) {
         return false;
     }
     // 手动序列化以避免结构体填充问题
-    if (!send_data(client_socket, &result.center, sizeof(result.center))) return false; // 8 bytes (2x float)
-    if (!send_data(client_socket, &result.radius, sizeof(result.radius))) return false; // 4 bytes (float)
-    if (!send_data(client_socket, &result.found, sizeof(result.found))) return false;   // 1 byte (bool)
+    if (!send_data(client_socket, &result.center, sizeof(result.center))) return false;
+    if (!send_data(client_socket, &result.radius, sizeof(result.radius))) return false;
+    if (!send_data(client_socket, &result.found, sizeof(result.found))) return false;
     return true;
 }
 
@@ -151,7 +154,7 @@ static void tcp_server_task(void* pvParameters) {
     }
 
     while (1) {
-        ESP_LOGI(TAG, "套接字正在监听");
+        ESP_LOGI(TAG, "服务器正在监听, 等待客户端连接...");
 
         struct sockaddr_in source_addr;
         socklen_t addr_len = sizeof(source_addr);
@@ -162,24 +165,22 @@ static void tcp_server_task(void* pvParameters) {
         }
 
         inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr.s_addr, addr_str, sizeof(addr_str) - 1);
-        ESP_LOGI(TAG, "套接字已接受来自IP地址的连接: %s", addr_str);
+        ESP_LOGI(TAG, "已接受来自 %s 的连接", addr_str);
         client_socket = sock;
 
-        // 保持连接打开，但在此任务中不执行任何操作。
-        // 主循环将使用send_image()发送数据。
-        // 我们通过检查套接字错误来检测断开连接。
+        // 循环检查客户端是否仍然连接
         while (1) {
             int error = 0;
             socklen_t len = sizeof(error);
             int retval = getsockopt(client_socket, SOL_SOCKET, SO_ERROR, &error, &len);
             if (retval != 0 || error != 0) {
-                ESP_LOGI(TAG, "客户端已断开连接。 error: %d", error);
+                ESP_LOGW(TAG, "客户端连接已断开 (socket error: %d)", error);
                 break; // 退出内部循环以接受新连接
             }
-            vTaskDelay(pdMS_TO_TICKS(1000)); // 每秒检查一次连接
+            vTaskDelay(pdMS_TO_TICKS(1000)); // 每秒检查一次连接状态
         }
 
-        // 客户端断开连接，重置套接字并准备接受新连接
+        // 客户端断开连接, 清理并准备接受新连接
         shutdown(client_socket, 0);
         close(client_socket);
         client_socket = -1;
@@ -190,6 +191,9 @@ CLEAN_UP:
     vTaskDelete(NULL);
 }
 
+/**
+ * @brief 发送指定长度的数据到套接字, 处理分包情况
+ */
 static bool send_data(int sock, const void* data, size_t len) {
     const char* p = (const char*)data;
     int to_write = len;
