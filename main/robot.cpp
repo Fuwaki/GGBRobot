@@ -1,4 +1,5 @@
 #include "robot.hpp"
+#include "OneEuroFilter.h"
 #include "camera_module.hpp"
 #include "config.hpp"
 #include "esp_log.h"
@@ -26,6 +27,9 @@ void Robot::init_controllers()
 
     x_controller_->enable_limit(Params::PID_OUTPUT_LIMIT_MIN, Params::PID_OUTPUT_LIMIT_MAX);
     y_controller_->enable_limit(Params::PID_OUTPUT_LIMIT_MIN, Params::PID_OUTPUT_LIMIT_MAX);
+
+    x_filter_ = std::make_unique<OneEuroFilter>(Params::ONEEURO_FREQ, Params::ONEEURO_MINCUTOFF, Params::ONEEURO_BETA, Params::ONEEURO_DCUTOFF);
+    y_filter_ = std::make_unique<OneEuroFilter>(Params::ONEEURO_FREQ, Params::ONEEURO_MINCUTOFF, Params::ONEEURO_BETA, Params::ONEEURO_DCUTOFF);
 }
 
 esp_err_t Robot::init()
@@ -79,11 +83,10 @@ void Robot::update_pid_controllers(const ImageDetector::Circle &ball, const cv::
         float x_error = ball.center.x - frame_size.width / 2.0f;
         float y_error = ball.center.y - frame_size.height / 2.0f;
 
-        // 使用低通滤波器平滑误差,减少抖动
-        filtered_x_error_ =
-            Params::LOW_PASS_FILTER_ALPHA * x_error + (1 - Params::LOW_PASS_FILTER_ALPHA) * filtered_x_error_;
-        filtered_y_error_ =
-            Params::LOW_PASS_FILTER_ALPHA * y_error + (1 - Params::LOW_PASS_FILTER_ALPHA) * filtered_y_error_;
+        // 使用OneEuroFilter平滑误差,减少抖动
+        double timestamp = esp_timer_get_time() / 1000000.0;
+        double filtered_x_error = x_filter_->filter(x_error, timestamp);
+        double filtered_y_error = y_filter_->filter(y_error, timestamp);
 
         // 计算两次调用之间的时间差 (dt)
         int64_t now_us = esp_timer_get_time();
@@ -93,16 +96,14 @@ void Robot::update_pid_controllers(const ImageDetector::Circle &ball, const cv::
 
         x_controller_->set_dt(dt_sec);
         y_controller_->set_dt(dt_sec);
-        x_controller_->set_error(-filtered_x_error_); // x方向控制roll
-        y_controller_->set_error(-filtered_y_error_); // y方向控制pitch
+        x_controller_->set_error(-filtered_x_error); // x方向控制roll
+        y_controller_->set_error(-filtered_y_error); // y方向控制pitch
     }
     else
     {
         gpio_set_level(Pins::LED_B, 0);
         x_controller_->clear();
         y_controller_->clear();
-        filtered_x_error_ = 0;
-        filtered_y_error_ = 0;
     }
 }
 
@@ -201,6 +202,8 @@ void Robot::run_streaming()
     }
 
     StreamServer::init_wifi_and_start_server(WIFI_SSID, WIFI_PASSWORD, SERVER_PORT);
+    last_fps_time_us_ = esp_timer_get_time();
+    frame_count_ = 0;
 
     while (true)
     {
@@ -211,32 +214,57 @@ void Robot::run_streaming()
             continue;
         }
 
+#ifdef ENABLE_TIMING_PROFILE
+        profiler_.start();
+#endif
         cv::Mat frame = CameraModule::get_grayscale_frame(100);
+#ifdef ENABLE_TIMING_PROFILE
+        profiler_.end("图像获取+解码");
+#endif
+
         if (frame.empty())
         {
             continue;
         }
 
+        this->log_performance();
+
+#ifdef ENABLE_TIMING_PROFILE
+        profiler_.start();
+#endif
         cv::Mat display_frame;
         cv::cvtColor(frame, display_frame, cv::COLOR_GRAY2BGR);
+#ifdef ENABLE_TIMING_PROFILE
+        profiler_.end("灰度转BGR");
+#endif
 
+#ifdef ENABLE_TIMING_PROFILE
+        profiler_.start();
+#endif
         ImageDetector::Circle ball = this->detect_ball(frame);
+#ifdef ENABLE_TIMING_PROFILE
+        profiler_.end("图像检测");
+#endif
         
-
-        if (!StreamServer::send_image(display_frame))
+#ifdef ENABLE_TIMING_PROFILE
+        profiler_.start();
+#endif
+        bool send_ok = StreamServer::send_image(display_frame);
+        if (send_ok)
         {
-            ESP_LOGW(TAG, "发送图像失败,可能连接已断开");
+            send_ok = StreamServer::send_detection_result(ball);
+        }
+#ifdef ENABLE_TIMING_PROFILE
+        profiler_.end("网络发送");
+#endif
+
+        if (!send_ok)
+        {
+            ESP_LOGW(TAG, "发送数据失败,可能连接已断开");
             vTaskDelay(pdMS_TO_TICKS(1000)); // 等待套接字清理
             continue;
         }
-        if (!StreamServer::send_detection_result(ball))
-        {
-            ESP_LOGW(TAG, "发送检测结果失败,可能连接已断开");
-            vTaskDelay(pdMS_TO_TICKS(1000)); // 等待套接字清理
-            continue;
 
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(50)); // 限制帧率
+        vTaskDelay(pdMS_TO_TICKS(10)); // 限制帧率
     }
 }

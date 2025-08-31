@@ -20,7 +20,7 @@ static const char *TAG = "摄像头模块";
 // WROVER-KIT 引脚定义 (根据您的硬件连接修改)
 #define CAM_PIN_PWDN -1
 #define CAM_PIN_RESET 4
-#define CAM_PIN_XCLK -1
+#define CAM_PIN_XCLK 12
 #define CAM_PIN_SIOD 17
 #define CAM_PIN_SIOC 18
 
@@ -123,8 +123,8 @@ esp_err_t init()
     camera_config.ledc_channel = LEDC_CHANNEL_0;
     camera_config.pixel_format = PIXFORMAT_JPEG;    // 使用JPEG格式以获得更高的帧率
     camera_config.frame_size = FRAMESIZE_QQVGA;     // 160x120, 适合低性能MCU
-    camera_config.jpeg_quality = 12;                // 0-63, 数字越小质量越高
-    camera_config.fb_count = 2;                     // 使用2个帧缓冲区进行双缓冲
+    camera_config.jpeg_quality = 30;                // 0-63, 数字越小质量越高
+    camera_config.fb_count = 5;                     // 使用2个帧缓冲区进行双缓冲
     camera_config.grab_mode = CAMERA_GRAB_LATEST;   // 缓冲区满时, 丢弃旧帧
     camera_config.fb_location = CAMERA_FB_IN_PSRAM; // 帧缓冲区位于PSRAM中
     camera_config.sccb_i2c_port = 0;
@@ -254,7 +254,7 @@ cv::Mat get_grayscale_frame(uint32_t timeout_ms)
         return cv::Mat();
     }
 
-    outbuf = (uint8_t *)heap_caps_malloc(outbuf_len, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+    outbuf = (uint8_t *)heap_caps_malloc(outbuf_len, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
     if (!outbuf)
     {
         ESP_LOGE(TAG, "为JPEG输出分配内存失败");

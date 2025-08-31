@@ -12,7 +12,7 @@
 // - OUTPUT_STREAM:           通过Wi-Fi将视频和检测结果流式传输到客户端
 #define OUTPUT_REALTIME_CONTROL 1
 #define OUTPUT_STREAM 2
-#define OUTPUT_TARGET OUTPUT_STREAM
+#define OUTPUT_TARGET OUTPUT_REALTIME_CONTROL
 
 // --- 性能分析 ---
 // 启用此项以在日志中打印每个处理步骤的执行时间
@@ -21,8 +21,8 @@
 // =================================================================
 // 网络配置 (仅在 OUTPUT_TARGET == OUTPUT_STREAM 时使用)
 // =================================================================
-#define WIFI_SSID "stdio.h"
-#define WIFI_PASSWORD "1145141919810"
+#define WIFI_SSID "Fuwaki's"
+#define WIFI_PASSWORD "114514qwq"
 #define SERVER_PORT 8080
 
 // =================================================================
@@ -46,16 +46,16 @@ const gpio_num_t SERVO_C = GPIO_NUM_3;
 namespace Params
 {
 // --- PID控制器参数 ---
-const double PID_P = 0.20;
+const double PID_P = 0.10;
 const double PID_I = 0.001;
-const double PID_D = 0.02;
+const double PID_D = 0.05;
 const float PID_OUTPUT_LIMIT_MIN = -30.0f;
 const float PID_OUTPUT_LIMIT_MAX = 30.0f;
 
 // --- 舵机控制参数 ---
 // 舵机零点偏移补偿（单位：度），根据实际机械结构进行微调
-const float SERVO_A_COMPENSATION = 66.0f;
-const float SERVO_B_COMPENSATION = 85.0f;
+const float SERVO_A_COMPENSATION = 70.0f;
+const float SERVO_B_COMPENSATION = 70.0f;
 const float SERVO_C_COMPENSATION = 40.0f;
 
 // --- 运动学参数 ---
@@ -77,4 +77,10 @@ const float DETECT_MAX_RADIUS = 50.0f;
 
 // --- 滤波器参数 ---
 const float LOW_PASS_FILTER_ALPHA = 0.2f; // 低通滤波器系数，用于平滑误差
+
+// --- OneEuroFilter 参数 ---
+const double ONEEURO_FREQ = 40.0;        // 初始采样频率 (Hz)
+const double ONEEURO_MINCUTOFF = 1.0;    // 最小截止频率 (Hz)
+const double ONEEURO_BETA = 0.08;         // Beta 参数，用于动态调整截止频率
+const double ONEEURO_DCUTOFF = 1.0;      // 导数截止频率 (Hz)
 } // namespace Params

@@ -4,6 +4,7 @@ import socket
 import struct
 import sys
 import math
+import time
 
 # --- 配置 ---
 # 在运行脚本时，将ESP32的IP地址作为第一个参数传入
@@ -38,17 +39,25 @@ def main():
         print(f"连接失败: {e}")
         return
 
+    # 用于FPS计算的变量
+    frame_count = 0
+    start_time = time.time()
+    fps = 0
+
     try:
         while True:
-            # 1. 接收图像尺寸 (宽度和高度，各4字节, little-endian)
-            header_data = recv_all(client_socket, 8)
+            # 1. 接收图像元数据 (宽度, 高度, 通道数, 各4字节, little-endian)
+            header_data = recv_all(client_socket, 12)
             if header_data is None:
                 raise ConnectionError("连接已断开 (接收尺寸失败)")
+
+            # 帧接收成功，开始计时
+            frame_count += 1
             
-            width, height = struct.unpack('<II', header_data)
-            img_size = width * height # 对于灰度图，每个像素1字节
-            if img_size <= 0 or img_size > 50000: # 添加一个合理性检查
-                print(f"收到无效尺寸: {width}x{height}，跳过此帧。")
+            width, height, channels = struct.unpack('<III', header_data)
+            img_size = width * height * channels
+            if img_size <= 0 or img_size > 500000:  # 增加缓冲区大小检查到500KB，支持QVGA彩色图像
+                print(f"收到无效尺寸: {width}x{height}x{channels}，跳过此帧。")
                 continue
 
             # 2. 根据大小接收完整的原始图像数据
@@ -62,15 +71,21 @@ def main():
             if result_data is None:
                 raise ConnectionError("连接已断开 (接收结果失败)")
             
-            cx, cy, radius, found = struct.unpack('<ff f ?', result_data)
+            cx, cy, radius, found = struct.unpack('<fff?', result_data)
 
             # 4. 从原始数据构建图像
             np_array = np.frombuffer(img_data, dtype=np.uint8)
-            frame = np_array.reshape((height, width))
 
             # 5. 可视化
-            # 将灰度图转换为彩色图以便绘制彩色标记
-            display_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+            if channels == 1:
+                frame = np_array.reshape((height, width))
+                # 将灰度图转换为彩色图以便绘制彩色标记
+                display_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+            elif channels == 3:
+                display_frame = np_array.reshape((height, width, 3)).copy()
+            else:
+                print(f"不支持的通道数: {channels}，跳过此帧。")
+                continue
 
             # 在图像中心画一个标记
             img_center_x, img_center_y = width // 2, height // 2
@@ -89,7 +104,17 @@ def main():
                 # 绘制圆轮廓
                 cv2.circle(display_frame, (int(cx), int(cy)), int(radius), (0, 255, 0), 2) # 绿色轮廓
 
-            # 6. 显示图像
+            # 6. 计算并显示FPS
+            elapsed_time = time.time() - start_time
+            if elapsed_time > 1: # 每秒更新一次
+                fps = frame_count / elapsed_time
+                frame_count = 0
+                start_time = time.time()
+            
+            fps_text = f"FPS: {fps:.2f}"
+            cv2.putText(display_frame, fps_text, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+            # 7. 显示图像
             cv2.imshow('ESP32 Stream', display_frame)
             
             if cv2.waitKey(1) & 0xFF == ord('q'):

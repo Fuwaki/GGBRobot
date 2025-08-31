@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PID.hpp"
+#include "OneEuroFilter.h"
 #include "config.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -86,6 +87,10 @@ class Robot
     std::unique_ptr<pid_positional_controller> x_controller_;
     std::unique_ptr<pid_positional_controller> y_controller_;
 
+    // 滤波器
+    std::unique_ptr<OneEuroFilter> x_filter_;
+    std::unique_ptr<OneEuroFilter> y_filter_;
+
 #ifdef ENABLE_TIMING_PROFILE
     TimingProfiler profiler_;
 #endif
@@ -95,6 +100,4 @@ class Robot
     int frame_count_ = 0;
     int64_t last_fps_time_us_ = 0;
     int64_t last_pid_time_us_ = 0;
-    float filtered_x_error_ = 0;
-    float filtered_y_error_ = 0;
 };
