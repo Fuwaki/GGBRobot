@@ -46,9 +46,9 @@ const gpio_num_t SERVO_C = GPIO_NUM_3;
 namespace Params
 {
 // --- PID控制器参数 ---
-const double PID_P = 0.10;
-const double PID_I = 0.001;
-const double PID_D = 0.05;
+const double PID_P = 0.07;
+const double PID_I = 0.0005;
+const double PID_D = 0.03;
 const float PID_OUTPUT_LIMIT_MIN = -30.0f;
 const float PID_OUTPUT_LIMIT_MAX = 30.0f;
 
@@ -81,6 +81,6 @@ const float LOW_PASS_FILTER_ALPHA = 0.2f; // 低通滤波器系数，用于平�
 // --- OneEuroFilter 参数 ---
 const double ONEEURO_FREQ = 40.0;        // 初始采样频率 (Hz)
 const double ONEEURO_MINCUTOFF = 1.0;    // 最小截止频率 (Hz)
-const double ONEEURO_BETA = 0.08;         // Beta 参数，用于动态调整截止频率
+const double ONEEURO_BETA = 0.1;         // Beta 参数，用于动态调整截止频率
 const double ONEEURO_DCUTOFF = 1.0;      // 导数截止频率 (Hz)
 } // namespace Params
