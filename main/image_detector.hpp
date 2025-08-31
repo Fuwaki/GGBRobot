@@ -21,12 +21,6 @@ namespace ImageDetector {
         bool found;
     };
 
-    struct MatchResult {
-        cv::Rect box;
-        double score;
-        bool found; // True if score is above a certain threshold
-    };
-
     struct ContourFindParams {
         double min_area = 0.0;
         double max_area = 1e9;
@@ -44,17 +38,17 @@ namespace ImageDetector {
 
     // --- Core Algorithm Functions ---
     Circle find_ball_by_contour(const cv::Mat& processed_img, const ContourFindParams& params);
-    MatchResult find_ball_by_template(const cv::Mat& frame, const cv::Mat& templ, const cv::Rect& search_window, double threshold);
+    Circle find_ball_by_components(const cv::Mat& processed_img, const ContourFindParams& params);
 
     // --- Wrappers and Test Functions ---
     cv::Mat create_test_image(int w, int h, GroundTruth& gt);
     void add_salt_and_pepper_noise(cv::Mat& img, int n);
 
     void detect_with_contours(const cv::Mat& img);
-    void detect_with_template_matching(const cv::Mat& img);
+    void detect_with_components(const cv::Mat& img);
 
     void run_contour_test(bool with_noise);
-    void test_template_matching();
+    void run_components_test(bool with_noise);
 };
 
 #endif // IMAGE_DETECTOR_HPP

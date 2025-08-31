@@ -1,11 +1,11 @@
 dependencies:
   espressif/esp-dl:
-    component_hash: 996c9d5ae81ebbb38d3e70314cccdae6e2ae0908842fad3512cff60db734635c
+    component_hash: f451adb8650cf7cbfd94001d07099190cc15273156fc53f748a1288b727c48cb
     dependencies:
-    - name: espressif/esp_new_jpeg
+    - name: espressif/esp_jpeg
       registry_url: https://components.espressif.com
       require: private
-      version: ^0.6.1
+      version: ^1.0.5~3
     - name: idf
       require: private
       version: '>=5.3'
@@ -13,12 +13,11 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     targets:
-    - esp32
     - esp32s3
     - esp32p4
-    version: 3.1.5
+    version: 3.1.2
   espressif/esp-dsp:
-    component_hash: 3e7bbd487f1357a1d4944d0c85966d049501ea281b8a4c7f93f7cfedd5b7f23d
+    component_hash: 42dce32d46ac93dc11f60d368e29a830e9661c7345d794b8a45c343479cae636
     dependencies:
     - name: idf
       require: private
@@ -26,7 +25,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 1.4.12
+    version: 1.7.0
   espressif/esp32-camera:
     component_hash: b209707f12aff1683c5c9dfaff3fa60f0eca687f2bf74f133cdef68fbae86028
     dependencies:
@@ -52,10 +51,10 @@ dependencies:
       type: service
     version: 1.3.1
   espressif/esp_new_jpeg:
-    component_hash: e6af208a875abd0ecfc0213d3751a11b504b463ebde6930f24096047925fa5c1
+    component_hash: 7c07831bbf11d15f84f42dc0e127094c78063b03d0dce688495773656f998d2b
     dependencies: []
     source:
-      registry_url: https://components.espressif.com
+      registry_url: https://components.espressif.com/
       type: service
     targets:
     - esp32
@@ -66,7 +65,7 @@ dependencies:
     - esp32c3
     - esp32c5
     - esp32c6
-    version: 0.6.1
+    version: 0.5.1
   espressif/opencv:
     component_hash: 9a5e4f3453048ab05419bbef0e5ab67cc98be5e0d51d8a194f41c167c63921d5
     dependencies:
@@ -100,9 +99,10 @@ direct_dependencies:
 - espressif/esp-dl
 - espressif/esp-dsp
 - espressif/esp32-camera
+- espressif/esp_new_jpeg
 - espressif/opencv
 - espressif/servo
 - idf
-manifest_hash: f0ce8de4131c5c2af340da37db840155eabb43eb466bc0011dfd38fb93b64040
+manifest_hash: 68f15f0e5459af3a3fd12b9b0102f32991735d84e3ca5763b1ef9cc987615199
 target: esp32s3
 version: 2.0.0
