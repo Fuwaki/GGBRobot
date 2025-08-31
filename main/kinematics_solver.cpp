@@ -1,5 +1,5 @@
 #include "kinematics_solver.hpp"
-#include "mini_matrix.hpp"
+#include "mat.h"
 #include "config.hpp" // 引入配置文件以获取参数
 #include "esp_log.h"
 #include <cmath>
@@ -11,7 +11,7 @@ static const char* TAG = "运动学求解器";
 constexpr float PI = 3.14159265358979323846f;
 
 ServoAngles move_platform(float pitch, float roll, float h) {
-    using namespace MiniMatrix;
+    using namespace dspm;
 
     // --- 1. 从config.hpp中获取几何常量 ---
     const float Rbase = Params::KINEMATICS_BASE_RADIUS;
@@ -23,23 +23,23 @@ ServoAngles move_platform(float pitch, float roll, float h) {
     roll = roll * PI / 180.0f;
 
     // --- 2. 定义舵机和关节的初始位置向量 ---
-    std::array<Matrix, 3> servos = { Matrix(3, 1), Matrix(3, 1), Matrix(3, 1) };
-    std::array<Matrix, 3> joints = { Matrix(3, 1), Matrix(3, 1), Matrix(3, 1) };
+    std::array<Mat, 3> servos = { Mat(3, 1), Mat(3, 1), Mat(3, 1) };
+    std::array<Mat, 3> joints = { Mat(3, 1), Mat(3, 1), Mat(3, 1) };
     const float servo_angles[] = {0.0f, 2.0f * PI / 3.0f, 4.0f * PI / 3.0f};
 
     for (int i = 0; i < 3; ++i) {
-        servos[i] = Matrix(3, 1);
-        joints[i] = Matrix(3, 1);
+        servos[i] = Mat(3, 1);
+        joints[i] = Mat(3, 1);
         float angle = servo_angles[i];
 
         // 舵机在基座平台上的位置
-        Matrix& s = servos[i];
+        Mat& s = servos[i];
         s(0, 0) = Rbase * cosf(angle);
         s(1, 0) = Rbase * sinf(angle);
         s(2, 0) = 0;
 
         // 连杆在运动平台上的初始连接点 (未旋转时)
-        Matrix& j = joints[i];
+        Mat& j = joints[i];
         j(0, 0) = Rbase * cosf(angle);
         j(1, 0) = Rbase * sinf(angle);
         j(2, 0) = h;
@@ -47,19 +47,19 @@ ServoAngles move_platform(float pitch, float roll, float h) {
 
     // --- 3. 创建姿态旋转矩阵 ---
     // 俯仰(Pitch)旋转矩阵 (绕Y轴)
-    Matrix pitch_rot(3, 3);
+    Mat pitch_rot(3, 3);
     pitch_rot(0, 0) = cosf(pitch);  pitch_rot(0, 1) = 0; pitch_rot(0, 2) = sinf(pitch);
     pitch_rot(1, 0) = 0;            pitch_rot(1, 1) = 1; pitch_rot(1, 2) = 0;
     pitch_rot(2, 0) = -sinf(pitch); pitch_rot(2, 1) = 0; pitch_rot(2, 2) = cosf(pitch);
 
     // 翻滚(Roll)旋转矩阵 (绕X轴)
-    Matrix roll_rot(3, 3);
+    Mat roll_rot(3, 3);
     roll_rot(0, 0) = 1; roll_rot(0, 1) = 0;           roll_rot(0, 2) = 0;
     roll_rot(1, 0) = 0; roll_rot(1, 1) = cosf(roll);  roll_rot(1, 2) = -sinf(roll);
     roll_rot(2, 0) = 0; roll_rot(2, 1) = sinf(roll);  roll_rot(2, 2) = cosf(roll);
 
     // 组合旋转矩阵
-    Matrix MatrixR = pitch_rot * roll_rot;
+    Mat MatrixR = pitch_rot * roll_rot;
 
     // --- 4. 迭代计算每个舵机的角度 ---
     ServoAngles result_angles;
@@ -67,9 +67,9 @@ ServoAngles move_platform(float pitch, float roll, float h) {
 
     for (int i = 0; i < 3; ++i) {
         // 计算旋转后关节的位置
-        Matrix new_joint = MatrixR * joints[i];
+        Mat new_joint = MatrixR * joints[i];
         // 计算从舵机到新关节位置的向量
-        Matrix d = new_joint - servos[i];
+        Mat d = new_joint - servos[i];
 
         // 将三维向量 d 投影到每个舵机各自的二维平面上进行计算
         float angle = servo_angles[i];

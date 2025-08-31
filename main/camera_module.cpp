@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "driver/gpio.h"
+
 #include "sensor.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -88,7 +89,7 @@ esp_err_t init() {
     camera_config.pin_pclk = CAM_PIN_PCLK;
     
     // 图像格式和质量配置
-    camera_config.xclk_freq_hz = 20000000;
+    camera_config.xclk_freq_hz = 24000000;
     camera_config.ledc_timer = LEDC_TIMER_0;
     camera_config.ledc_channel = LEDC_CHANNEL_0;
     camera_config.pixel_format = PIXFORMAT_JPEG; // 使用JPEG格式以获得更高的帧率
@@ -124,6 +125,7 @@ esp_err_t init() {
         ESP_LOGE(TAG, "启动 camera_producer 任务失败");
         return ESP_FAIL;
     }
+    
 
     ESP_LOGI(TAG, "摄像头初始化成功 (后台捕获任务已启动)");
     return ESP_OK;
