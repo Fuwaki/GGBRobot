@@ -1,23 +1,24 @@
 #pragma once
 
+#include "PID.hpp"
+#include "config.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "servo_controller.hpp"
-#include "PID.hpp"
-#include "timing_profiler.hpp"
-#include "config.hpp"
 #include "image_detector.hpp"
+#include "servo_controller.hpp"
+#include "timing_profiler.hpp"
 #include <array>
 #include <memory>
 
 /**
  * @brief 代表整个机器人系统的核心类
- * 
+ *
  * 该类封装了所有硬件模块(摄像头、舵机)和控制逻辑(PID、运动学),
  * 负责初始化系统并运行主控制循环。
  */
-class Robot {
-public:
+class Robot
+{
+  public:
     Robot();
     ~Robot();
 
@@ -37,7 +38,7 @@ public:
      */
     void run_streaming();
 
-private:
+  private:
     /**
      * @brief 初始化舵机和PID控制器
      */
@@ -47,7 +48,7 @@ private:
      * @brief 将计算出的角度应用到三个舵机上
      * @param angles 包含三个舵机角度的数组 {a, b, c}
      */
-    void apply_servo_angles(const std::array<float, 3>& angles);
+    void apply_servo_angles(const std::array<float, 3> &angles);
 
     /**
      * @brief 执行一次完整的实时控制循环迭代
@@ -59,14 +60,14 @@ private:
      * @param img 输入的灰度图像
      * @return ImageDetector::Circle 检测到的圆形
      */
-    ImageDetector::Circle detect_ball(cv::Mat& img);
+    ImageDetector::Circle detect_ball(cv::Mat &img);
 
     /**
      * @brief 根据检测到的球的位置计算PID输出
      * @param ball The detected circle object.
      * @param frame_size The size of the image frame.
      */
-    void update_pid_controllers(const ImageDetector::Circle& ball, const cv::Size& frame_size);
+    void update_pid_controllers(const ImageDetector::Circle &ball, const cv::Size &frame_size);
 
     /**
      * @brief 记录帧率和性能分析数据

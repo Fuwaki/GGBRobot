@@ -8,18 +8,18 @@
  */
 class pid_positional_controller
 {
-private:
-    double kp, ki, kd;      // PID增益: 比例, 积分, 微分
-    double integral;        // 积分项累加值
-    double previous_error;  // 上一次的误差
-    double err;             // 当前误差
-    double dt;              // 采样时间 (秒)
+  private:
+    double kp, ki, kd;     // PID增益: 比例, 积分, 微分
+    double integral;       // 积分项累加值
+    double previous_error; // 上一次的误差
+    double err;            // 当前误差
+    double dt;             // 采样时间 (秒)
 
     bool enable_output_limit; // 是否启用输出限幅
     double output_limit_down; // 输出下限
     double output_limit_up;   // 输出上限
 
-public:
+  public:
     /**
      * @brief 构造一个PID控制器
      * @param kp 比例增益
@@ -28,8 +28,8 @@ public:
      * @param dt 采样时间(秒)
      */
     pid_positional_controller(double kp, double ki, double kd, double dt = 1.0)
-        : kp(kp), ki(ki), kd(kd), integral(0), previous_error(0), err(0), dt(dt),
-          enable_output_limit(false), output_limit_down(-1.0), output_limit_up(1.0)
+        : kp(kp), ki(ki), kd(kd), integral(0), previous_error(0), err(0), dt(dt), enable_output_limit(false),
+          output_limit_down(-1.0), output_limit_up(1.0)
     {
     }
 
@@ -40,13 +40,15 @@ public:
     double get_adjustment()
     {
         double derivative = 0;
-        if (dt != 0.0) {
+        if (dt != 0.0)
+        {
             derivative = (err - previous_error) / dt;
         }
 
         double result = kp * err + ki * integral + kd * derivative;
-        
-        if (enable_output_limit) {
+
+        if (enable_output_limit)
+        {
             return std::clamp(result, output_limit_down, output_limit_up);
         }
         return result;
@@ -58,7 +60,7 @@ public:
      */
     void set_error(double error)
     {
-        previous_error = err;  // 保存上一次的误差
+        previous_error = err; // 保存上一次的误差
         err = error;
         integral += error * dt; // 使用采样时间累加积分
     }
@@ -69,7 +71,8 @@ public:
      */
     void set_dt(double new_dt)
     {
-        if (new_dt > 0) {
+        if (new_dt > 0)
+        {
             dt = new_dt;
         }
     }

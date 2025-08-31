@@ -1,11 +1,14 @@
 #include "image_processor.hpp"
-#include <opencv2/opencv.hpp>
 #include <cstdint>
+#include <opencv2/opencv.hpp>
 
-namespace ImageProcessor {
+namespace ImageProcessor
+{
 
-void binarize(cv::Mat &img, uint8_t threshold) {
-    if (img.empty() || img.channels() != 1) {
+void binarize(cv::Mat &img, uint8_t threshold)
+{
+    if (img.empty() || img.channels() != 1)
+    {
         return; // 只处理有效的单通道灰度图像
     }
 

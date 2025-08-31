@@ -1,8 +1,7 @@
 #pragma once
 
-
-namespace Benchmark {
-
+namespace Benchmark
+{
 
 void run_matrix_benchmark();
 

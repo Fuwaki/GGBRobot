@@ -22,17 +22,18 @@ public:
      * @brief 结束一个计时段并记录耗时
      * @param name 计时段的名称
      */
-    void end(const std::string& name) {
+    void end(const char* name) {
         if (start_time_ == 0) {
             return; // start() 未被调用
         }
         int64_t elapsed = esp_timer_get_time() - start_time_;
         
+        std::string name_str = name;
         // 如果是新的计时段名称, 将其添加到有序列表中
-        if (timings_.find(name) == timings_.end()) {
-            ordered_keys_.push_back(name);
+        if (timings_.find(name_str) == timings_.end()) {
+            ordered_keys_.push_back(name_str);
         }
-        timings_[name] += elapsed;
+        timings_[name_str] += elapsed;
         start_time_ = 0; // 为下一次测量重置
     }
 
