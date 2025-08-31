@@ -8,6 +8,7 @@ idf_component_register(
          "servo_controller.cpp"
          "kinematics_solver.cpp"
          "image_detector.cpp"
+         "OneEuroFilter.cpp"
         
     INCLUDE_DIRS ""
 )

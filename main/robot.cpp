@@ -221,17 +221,20 @@ void Robot::run_streaming()
         cv::cvtColor(frame, display_frame, cv::COLOR_GRAY2BGR);
 
         ImageDetector::Circle ball = this->detect_ball(frame);
-        if (ball.found)
-        {
-            cv::circle(display_frame, ball.center, ball.radius, cv::Scalar(0, 255, 0), 2);
-            cv::circle(display_frame, ball.center, 2, cv::Scalar(0, 0, 255), -1);
-        }
+        
 
         if (!StreamServer::send_image(display_frame))
         {
             ESP_LOGW(TAG, "发送图像失败,可能连接已断开");
             vTaskDelay(pdMS_TO_TICKS(1000)); // 等待套接字清理
             continue;
+        }
+        if (!StreamServer::send_detection_result(ball))
+        {
+            ESP_LOGW(TAG, "发送检测结果失败,可能连接已断开");
+            vTaskDelay(pdMS_TO_TICKS(1000)); // 等待套接字清理
+            continue;
+
         }
 
         vTaskDelay(pdMS_TO_TICKS(50)); // 限制帧率

@@ -5,6 +5,7 @@
 #include "esp_log.h"
 
 #include "esp_dsp.h"
+#include "esp_timer.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "sensor.h"
@@ -47,6 +48,11 @@ static SemaphoreHandle_t latest_fb_sem = nullptr;   // 用于通知新帧到达�
 static void camera_producer_task(void *pvParameters)
 {
     (void)pvParameters;
+
+    // 用于FPS计算
+    int frame_count = 0;
+    long last_fps_time = esp_timer_get_time();
+
     while (true)
     {
         camera_fb_t *fb = esp_camera_fb_get();
@@ -55,6 +61,19 @@ static void camera_producer_task(void *pvParameters)
             vTaskDelay(pdMS_TO_TICKS(10)); // 获取失败, 稍后重试
             continue;
         }
+
+        // --- FPS 计算开始 ---
+        frame_count++;
+        long current_time = esp_timer_get_time();
+        long time_diff = current_time - last_fps_time;
+        if (time_diff >= 1000000) // 1,000,000 微秒 = 1 秒
+        {
+            float fps = (float)frame_count / (time_diff / 1000000.0f);
+            ESP_LOGI(TAG, "Camera FPS: %.2f", fps);
+            frame_count = 0;
+            last_fps_time = current_time;
+        }
+        // --- FPS 计算结束 ---
 
         // 使用互斥锁保护对全局指针的访问
         if (xSemaphoreTake(latest_fb_mutex, portMAX_DELAY) == pdTRUE)
