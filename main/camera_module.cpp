@@ -48,10 +48,11 @@ static SemaphoreHandle_t latest_fb_sem = nullptr;   // 用于通知新帧到达�
 static void camera_producer_task(void *pvParameters)
 {
     (void)pvParameters;
-
+    #ifdef ENABLE_TIMING_PROFILE
     // 用于FPS计算
     int frame_count = 0;
     long last_fps_time = esp_timer_get_time();
+    #endif
 
     while (true)
     {
@@ -62,6 +63,7 @@ static void camera_producer_task(void *pvParameters)
             continue;
         }
 
+        #ifdef ENABLE_TIMING_PROFILE
         // --- FPS 计算开始 ---
         frame_count++;
         long current_time = esp_timer_get_time();
@@ -74,6 +76,7 @@ static void camera_producer_task(void *pvParameters)
             last_fps_time = current_time;
         }
         // --- FPS 计算结束 ---
+        #endif
 
         // 使用互斥锁保护对全局指针的访问
         if (xSemaphoreTake(latest_fb_mutex, portMAX_DELAY) == pdTRUE)

@@ -16,7 +16,7 @@
 
 // --- 性能分析 ---
 // 启用此项以在日志中打印每个处理步骤的执行时间
-#define ENABLE_TIMING_PROFILE
+// #define ENABLE_TIMING_PROFILE
 
 // =================================================================
 // 网络配置 (仅在 OUTPUT_TARGET == OUTPUT_STREAM 时使用)
@@ -80,7 +80,7 @@ const float LOW_PASS_FILTER_ALPHA = 0.2f; // 低通滤波器系数，用于平�
 
 // --- OneEuroFilter 参数 ---
 const double ONEEURO_FREQ = 40.0;        // 初始采样频率 (Hz)
-const double ONEEURO_MINCUTOFF = 1.0;    // 最小截止频率 (Hz)
+const double ONEEURO_MINCUTOFF = 0.9;    // 最小截止频率 (Hz)
 const double ONEEURO_BETA = 0.1;         // Beta 参数，用于动态调整截止频率
 const double ONEEURO_DCUTOFF = 1.0;      // 导数截止频率 (Hz)
 } // namespace Params

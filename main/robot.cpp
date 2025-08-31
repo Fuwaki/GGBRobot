@@ -8,6 +8,7 @@
 #include "image_processor.hpp"
 #include "kinematics_solver.hpp"
 #include "stream_server.hpp"
+#include <cstdio>
 #include <opencv2/opencv.hpp>
 
 static const char *TAG = "机器人";
@@ -87,8 +88,9 @@ void Robot::update_pid_controllers(const ImageDetector::Circle &ball, const cv::
         double timestamp = esp_timer_get_time() / 1000000.0;
         double filtered_x_error = x_filter_->filter(x_error, timestamp);
         double filtered_y_error = y_filter_->filter(y_error, timestamp);
-        ESP_LOGW(TAG, "PID输入误差: X=%.2f (滤波前), X_filtered=%.2f (滤波后)", x_error, filtered_x_error);
-        ESP_LOGW(TAG, "PID输入误差: Y=%.2f (滤波前), Y_filtered=%.2f (滤波后)", y_error, filtered_y_error);
+        // ESP_LOGW(TAG, "PID输入误差: X=%.2f (滤波前), X_filtered=%.2f (滤波后)", x_error, filtered_x_error);
+        // ESP_LOGW(TAG, "PID输入误差: Y=%.2f (滤波前), Y_filtered=%.2f (滤波后)", y_error, filtered_y_error);
+        // printf("%f,%f,%f,%f\n",x_error,y_error,filtered_x_error,filtered_y_error);
 
 
         // 计算两次调用之间的时间差 (dt)
@@ -112,18 +114,18 @@ void Robot::update_pid_controllers(const ImageDetector::Circle &ball, const cv::
 
 void Robot::log_performance()
 {
+    #ifdef ENABLE_TIMING_PROFILE
     frame_count_++;
     if (frame_count_ % 100 == 0)
     {
         int64_t current_time = esp_timer_get_time();
         float fps = 100.0f / ((current_time - last_fps_time_us_) / 1000000.0f);
         ESP_LOGI(TAG, "FPS: %.2f", fps);
-#ifdef ENABLE_TIMING_PROFILE
         profiler_.log_results(TAG, 100);
         profiler_.reset();
-#endif
         last_fps_time_us_ = current_time;
     }
+    #endif
 }
 
 void Robot::control_loop_iteration()
